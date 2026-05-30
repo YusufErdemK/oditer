@@ -1,8 +1,17 @@
 #include <gtkmm.h>
+#include <cmath>
 
 class NotebookArea : public Gtk::DrawingArea
 {
 public:
+    bool show_new_pen_dialog = false;
+
+    void toggle_pen_dialog()
+    {
+        show_new_pen_dialog = !show_new_pen_dialog;
+        queue_draw();
+    }
+
     NotebookArea()
     {
         add_events(Gdk::BUTTON_PRESS_MASK |
@@ -73,7 +82,7 @@ protected:
             last_x = event->x;
             last_y = event->y;
 
-            queue_draw(); // yeniden çiz
+            queue_draw();
         }
         return true;
     }
@@ -118,14 +127,72 @@ protected:
 
         cr->stroke();
 
-        // top glow
-        auto gradient = Cairo::LinearGradient::create(0, 0, 0, 120);
-        gradient->add_color_stop_rgba(0.0, 1, 1, 1, 0.18);
-        gradient->add_color_stop_rgba(1.0, 1, 1, 1, 0.0);
+        if (show_new_pen_dialog)
+        {
+            double box_w = 300, box_h = 400;
+            double x = (width - box_w) / 2;
+            double y = (height - box_h) / 2;
+            double radius = 24; // i love 24px br twin
 
-        cr->set_source(gradient);
-        cr->rectangle(0, 0, width, 120);
-        cr->fill();
+            auto draw_rounded_rect = [&](double rx, double ry, double rw, double rh, double r)
+            {
+                cr->begin_new_sub_path();
+                cr->arc(rx + rw - r, ry + r, r, -M_PI / 2, 0);
+                cr->arc(rx + rw - r, ry + rh - r, r, 0, M_PI / 2);
+                cr->arc(rx + r, ry + rh - r, r, M_PI / 2, M_PI);
+                cr->arc(rx + r, ry + r, r, M_PI, 3 * M_PI / 2);
+                cr->close_path();
+            };
+
+            for (int s = 1; s <= 12; s++)
+            {
+                double shadow_opacity = 0.03 * (13 - s) / 12.0;
+                cr->set_source_rgba(0.0, 0.0, 0.0, shadow_opacity);
+                // shadow effect (this is ai sorry)
+                draw_rounded_rect(x - s / 2.0, y - s / 2.0 + 4, box_w + s, box_h + s, radius + s / 2.0);
+                cr->fill();
+            }
+
+            // LIQUID GLASSSSSS YEAAAH
+            draw_rounded_rect(x, y, box_w, box_h, radius);
+            cr->set_source_rgba(0.98, 0.98, 0.98, 0.90); 
+            cr->fill_preserve();
+
+            cr->set_line_width(1.0);
+            cr->set_source_rgba(1.0, 1.0, 1.0, 1.0);
+            cr->stroke_preserve();
+
+            cr->set_line_width(0.5);
+            cr->set_source_rgba(0.0, 0.0, 0.0, 0.15);
+            cr->stroke();
+
+            double cx = x + box_w / 2;
+            double cy = y + 150;
+            double r_outer = 65, r_inner = 45;
+
+            for (int i = 0; i < 360; i++)
+            {
+                double angle1 = i * M_PI / 180.0;
+                double angle2 = (i + 1.5) * M_PI / 180.0; 
+
+                cr->set_source_rgb(
+                    0.5 + 0.5 * sin(angle1),
+                    0.5 + 0.5 * sin(angle1 + 2.09439),
+                    0.5 + 0.5 * sin(angle1 + 4.18879));
+                cr->arc(cx, cy, r_outer, angle1, angle2);
+                cr->arc_negative(cx, cy, r_inner, angle2, angle1);
+                cr->fill();
+            }
+
+            cr->set_line_width(0.5);
+            cr->set_source_rgba(0.0, 0.0, 0.0, 0.1);
+
+            cr->arc(cx, cy, r_outer, 0, 2 * M_PI);
+            cr->stroke();
+
+            cr->arc(cx, cy, r_inner, 0, 2 * M_PI);
+            cr->stroke();
+        }
 
         return true;
     }
@@ -141,6 +208,8 @@ int main(int argc, char *argv[])
 
     Gtk::Box main_box(Gtk::ORIENTATION_VERTICAL);
     window.add(main_box);
+
+    NotebookArea notebook;
 
     // menu bar
     Gtk::MenuBar menu_bar;
@@ -163,9 +232,11 @@ int main(int argc, char *argv[])
     window_menu->append(*Gtk::manage(new Gtk::MenuItem("Maximize")));
     window_menu->append(*Gtk::manage(new Gtk::MenuItem("Minimize")));
 
-    pen_menu->append(*Gtk::manage(new Gtk::MenuItem("Create Pen")));
+    Gtk::MenuItem *create_pen_item = Gtk::manage(new Gtk::MenuItem("Create Pen"));
+    pen_menu->append(*create_pen_item);
     pen_menu->append(*Gtk::manage(new Gtk::MenuItem("Import Pen")));
-    pen_menu->append(*Gtk::manage(new Gtk::MenuItem("Pens")));
+
+    create_pen_item->signal_activate().connect(sigc::mem_fun(notebook, &NotebookArea::toggle_pen_dialog));
 
     Gtk::MenuItem *file_item = Gtk::manage(new Gtk::MenuItem("File"));
     file_item->set_submenu(*file_menu);
@@ -179,6 +250,16 @@ int main(int argc, char *argv[])
     Gtk::MenuItem *pen_item = Gtk::manage(new Gtk::MenuItem("Pen"));
     pen_item->set_submenu(*pen_menu);
 
+    Gtk::MenuItem *pens_sub_item = Gtk::manage(new Gtk::MenuItem("Pens"));
+
+    Gtk::Menu *pens_nested_menu = Gtk::manage(new Gtk::Menu());
+
+    pens_nested_menu->append(*Gtk::manage(new Gtk::MenuItem("Brush")));
+    pens_nested_menu->append(*Gtk::manage(new Gtk::MenuItem("Marker")));
+
+    pens_sub_item->set_submenu(*pens_nested_menu);
+
+    pen_menu->append(*pens_sub_item);
     menu_bar.append(*file_item);
     menu_bar.append(*edit_item);
     menu_bar.append(*window_item);
@@ -186,7 +267,6 @@ int main(int argc, char *argv[])
 
     main_box.pack_start(menu_bar, Gtk::PACK_SHRINK);
 
-    NotebookArea notebook;
     main_box.pack_start(notebook);
 
     window.show_all();
