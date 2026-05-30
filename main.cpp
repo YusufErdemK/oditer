@@ -1,39 +1,125 @@
 #include <gtkmm.h>
 
-class NotebookArea : public Gtk::DrawingArea {
+class NotebookArea : public Gtk::DrawingArea
+{
+public:
+    NotebookArea()
+    {
+        add_events(Gdk::BUTTON_PRESS_MASK |
+                   Gdk::BUTTON_RELEASE_MASK |
+                   Gdk::POINTER_MOTION_MASK);
+
+        signal_button_press_event().connect(
+            sigc::mem_fun(*this, &NotebookArea::on_button_press), false);
+
+        signal_button_release_event().connect(
+            sigc::mem_fun(*this, &NotebookArea::on_button_release), false);
+
+        signal_motion_notify_event().connect(
+            sigc::mem_fun(*this, &NotebookArea::on_mouse_move), false);
+    }
+
 protected:
-    bool on_draw(const Cairo::RefPtr<Cairo::Context>& cr) override {
+    double offset_x = 0;
+    double offset_y = 0;
+
+    double last_x = 0;
+    double last_y = 0;
+
+    bool dragging = false;
+
+    bool on_button_press(GdkEventButton *event)
+    {
+        if (event->button == 1)
+        {
+            dragging = true;
+            last_x = event->x;
+            last_y = event->y;
+
+            auto window = get_window();
+            if (window)
+            {
+                window->set_cursor(Gdk::Cursor::create(Gdk::HAND1));
+            }
+        }
+        return true;
+    }
+
+    bool on_button_release(GdkEventButton *event)
+    {
+        if (event->button == 1)
+        {
+            dragging = false;
+
+            auto window = get_window();
+            if (window)
+            {
+                window->set_cursor();
+            }
+        }
+        return true;
+    }
+
+    bool on_mouse_move(GdkEventMotion *event)
+    {
+        if (dragging)
+        {
+            double dx = event->x - last_x;
+            double dy = event->y - last_y;
+
+            offset_x -= dx;
+            offset_y -= dy;
+
+            last_x = event->x;
+            last_y = event->y;
+
+            queue_draw(); // yeniden çiz
+        }
+        return true;
+    }
+
+    bool on_draw(const Cairo::RefPtr<Cairo::Context> &cr) override
+    {
         Gtk::Allocation allocation = get_allocation();
 
         const int width = allocation.get_width();
         const int height = allocation.get_height();
 
+        // background
         cr->set_source_rgb(0.965, 0.965, 0.975);
         cr->paint();
 
         const int grid = 28;
 
-        cr->set_source_rgba(0.82, 0.84, 0.88, 0.35);
+        cr->set_source_rgba(0.82, 0.84, 0.88, 0.75);
         cr->set_line_width(1.0);
 
+        int start_x = (int)(-offset_x) % grid;
+        int start_y = (int)(-offset_y) % grid;
+
+        if (start_x > 0)
+            start_x -= grid;
+        if (start_y > 0)
+            start_y -= grid;
+
         // vertical lines
-        for (int x = 0; x < width; x += grid) {
+        for (int x = start_x; x < width; x += grid)
+        {
             cr->move_to(x + 0.5, 0);
             cr->line_to(x + 0.5, height);
         }
 
         // horizontal lines
-        for (int y = 0; y < height; y += grid) {
+        for (int y = start_y; y < height; y += grid)
+        {
             cr->move_to(0, y + 0.5);
             cr->line_to(width, y + 0.5);
         }
 
         cr->stroke();
 
-        // subtle top glow
-        Cairo::RefPtr<Cairo::LinearGradient> gradient =
-            Cairo::LinearGradient::create(0, 0, 0, 120);
-
+        // top glow
+        auto gradient = Cairo::LinearGradient::create(0, 0, 0, 120);
         gradient->add_color_stop_rgba(0.0, 1, 1, 1, 0.18);
         gradient->add_color_stop_rgba(1.0, 1, 1, 1, 0.0);
 
@@ -45,7 +131,8 @@ protected:
     }
 };
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[])
+{
     auto app = Gtk::Application::create(argc, argv, "org.erdamn.oditer");
 
     Gtk::Window window;
@@ -58,10 +145,10 @@ int main(int argc, char* argv[]) {
     // menu bar
     Gtk::MenuBar menu_bar;
 
-    Gtk::Menu* file_menu = Gtk::manage(new Gtk::Menu());
-    Gtk::Menu* edit_menu = Gtk::manage(new Gtk::Menu());
-    Gtk::Menu* window_menu = Gtk::manage(new Gtk::Menu());
-    Gtk::Menu* pen_menu = Gtk::manage(new Gtk::Menu());
+    Gtk::Menu *file_menu = Gtk::manage(new Gtk::Menu());
+    Gtk::Menu *edit_menu = Gtk::manage(new Gtk::Menu());
+    Gtk::Menu *window_menu = Gtk::manage(new Gtk::Menu());
+    Gtk::Menu *pen_menu = Gtk::manage(new Gtk::Menu());
 
     file_menu->append(*Gtk::manage(new Gtk::MenuItem("New")));
     file_menu->append(*Gtk::manage(new Gtk::MenuItem("Open")));
@@ -80,16 +167,16 @@ int main(int argc, char* argv[]) {
     pen_menu->append(*Gtk::manage(new Gtk::MenuItem("Import Pen")));
     pen_menu->append(*Gtk::manage(new Gtk::MenuItem("Pens")));
 
-    Gtk::MenuItem* file_item = Gtk::manage(new Gtk::MenuItem("File"));
+    Gtk::MenuItem *file_item = Gtk::manage(new Gtk::MenuItem("File"));
     file_item->set_submenu(*file_menu);
 
-    Gtk::MenuItem* edit_item = Gtk::manage(new Gtk::MenuItem("Edit"));
+    Gtk::MenuItem *edit_item = Gtk::manage(new Gtk::MenuItem("Edit"));
     edit_item->set_submenu(*edit_menu);
 
-    Gtk::MenuItem* window_item = Gtk::manage(new Gtk::MenuItem("Window"));
+    Gtk::MenuItem *window_item = Gtk::manage(new Gtk::MenuItem("Window"));
     window_item->set_submenu(*window_menu);
 
-    Gtk::MenuItem* pen_item = Gtk::manage(new Gtk::MenuItem("Pen"));
+    Gtk::MenuItem *pen_item = Gtk::manage(new Gtk::MenuItem("Pen"));
     pen_item->set_submenu(*pen_menu);
 
     menu_bar.append(*file_item);
