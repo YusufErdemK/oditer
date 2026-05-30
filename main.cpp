@@ -1,15 +1,54 @@
 #include <gtkmm.h>
+#include <gdk/gdkkeysyms.h>
 #include <cmath>
+#include <vector>
 
 class NotebookArea : public Gtk::DrawingArea
 {
 public:
     bool show_new_pen_dialog = false;
 
+    enum class Tool { PAN, BRUSH };
+    Tool current_tool = Tool::PAN;
+
     void toggle_pen_dialog()
     {
         show_new_pen_dialog = !show_new_pen_dialog;
         queue_draw();
+    }
+
+    void set_tool_brush()
+    {
+        current_tool = Tool::BRUSH;
+        auto window = get_window();
+        if (window) window->set_cursor(Gdk::Cursor::create(Gdk::PENCIL));
+    }
+
+    void set_tool_pan()
+    {
+        current_tool = Tool::PAN;
+        auto window = get_window();
+        if (window) window->set_cursor();
+    }
+
+    void undo()
+    {
+        if (!strokes.empty())
+        {
+            redo_strokes.push_back(strokes.back());
+            strokes.pop_back();
+            queue_draw();
+        }
+    }
+
+    void redo()
+    {
+        if (!redo_strokes.empty())
+        {
+            strokes.push_back(redo_strokes.back());
+            redo_strokes.pop_back();
+            queue_draw();
+        }
     }
 
     NotebookArea()
@@ -37,6 +76,11 @@ protected:
 
     bool dragging = false;
 
+    struct Point { double x, y; };
+    std::vector<std::vector<Point>> strokes;
+    std::vector<std::vector<Point>> redo_strokes;
+    std::vector<Point> current_stroke;
+
     bool on_button_press(GdkEventButton *event)
     {
         if (event->button == 1)
@@ -45,10 +89,15 @@ protected:
             last_x = event->x;
             last_y = event->y;
 
-            auto window = get_window();
-            if (window)
+            if (current_tool == Tool::PAN)
             {
-                window->set_cursor(Gdk::Cursor::create(Gdk::HAND1));
+                auto window = get_window();
+                if (window) window->set_cursor(Gdk::Cursor::create(Gdk::HAND1));
+            }
+            else if (current_tool == Tool::BRUSH)
+            {
+                current_stroke.clear();
+                current_stroke.push_back({event->x + offset_x, event->y + offset_y});
             }
         }
         return true;
@@ -60,10 +109,19 @@ protected:
         {
             dragging = false;
 
-            auto window = get_window();
-            if (window)
+            if (current_tool == Tool::PAN)
             {
-                window->set_cursor();
+                auto window = get_window();
+                if (window) window->set_cursor();
+            }
+            else if (current_tool == Tool::BRUSH)
+            {
+                if (!current_stroke.empty()) {
+                    strokes.push_back(current_stroke);
+                    current_stroke.clear();
+                    redo_strokes.clear();
+                }
+                queue_draw();
             }
         }
         return true;
@@ -73,16 +131,24 @@ protected:
     {
         if (dragging)
         {
-            double dx = event->x - last_x;
-            double dy = event->y - last_y;
+            if (current_tool == Tool::PAN)
+            {
+                double dx = event->x - last_x;
+                double dy = event->y - last_y;
 
-            offset_x -= dx;
-            offset_y -= dy;
+                offset_x -= dx;
+                offset_y -= dy;
 
-            last_x = event->x;
-            last_y = event->y;
+                last_x = event->x;
+                last_y = event->y;
 
-            queue_draw();
+                queue_draw();
+            }
+            else if (current_tool == Tool::BRUSH)
+            {
+                current_stroke.push_back({event->x + offset_x, event->y + offset_y});
+                queue_draw();
+            }
         }
         return true;
     }
@@ -106,10 +172,8 @@ protected:
         int start_x = (int)(-offset_x) % grid;
         int start_y = (int)(-offset_y) % grid;
 
-        if (start_x > 0)
-            start_x -= grid;
-        if (start_y > 0)
-            start_y -= grid;
+        if (start_x > 0) start_x -= grid;
+        if (start_y > 0) start_y -= grid;
 
         // vertical lines
         for (int x = start_x; x < width; x += grid)
@@ -126,6 +190,26 @@ protected:
         }
 
         cr->stroke();
+
+        cr->set_line_width(2.5);
+        cr->set_source_rgba(0.1, 0.1, 0.15, 0.9);
+        cr->set_line_cap(Cairo::LINE_CAP_ROUND);
+        cr->set_line_join(Cairo::LINE_JOIN_ROUND);
+
+        auto draw_stroke = [&](const std::vector<Point>& stroke) {
+            if (stroke.empty()) return;
+            cr->move_to(stroke[0].x - offset_x, stroke[0].y - offset_y);
+            for (size_t i = 1; i < stroke.size(); ++i) {
+                cr->line_to(stroke[i].x - offset_x, stroke[i].y - offset_y);
+            }
+            cr->stroke();
+        };
+
+        for (const auto& stroke : strokes) {
+            draw_stroke(stroke);
+        }
+        
+        draw_stroke(current_stroke);
 
         if (show_new_pen_dialog)
         {
@@ -206,6 +290,9 @@ int main(int argc, char *argv[])
     window.set_title("oditer");
     window.set_default_size(1200, 800);
 
+    Glib::RefPtr<Gtk::AccelGroup> accel_group = Gtk::AccelGroup::create();
+    window.add_accel_group(accel_group);
+
     Gtk::Box main_box(Gtk::ORIENTATION_VERTICAL);
     window.add(main_box);
 
@@ -223,8 +310,16 @@ int main(int argc, char *argv[])
     file_menu->append(*Gtk::manage(new Gtk::MenuItem("Open")));
     file_menu->append(*Gtk::manage(new Gtk::MenuItem("Quit")));
 
-    edit_menu->append(*Gtk::manage(new Gtk::MenuItem("Undo")));
-    edit_menu->append(*Gtk::manage(new Gtk::MenuItem("Redo")));
+    Gtk::MenuItem *undo_item = Gtk::manage(new Gtk::MenuItem("Undo"));
+    undo_item->add_accelerator("activate", accel_group, GDK_KEY_z, Gdk::CONTROL_MASK, Gtk::ACCEL_VISIBLE);
+    undo_item->signal_activate().connect(sigc::mem_fun(notebook, &NotebookArea::undo));
+    edit_menu->append(*undo_item);
+
+    Gtk::MenuItem *redo_item = Gtk::manage(new Gtk::MenuItem("Redo"));
+    redo_item->add_accelerator("activate", accel_group, GDK_KEY_y, Gdk::CONTROL_MASK, Gtk::ACCEL_VISIBLE);
+    redo_item->signal_activate().connect(sigc::mem_fun(notebook, &NotebookArea::redo));
+    edit_menu->append(*redo_item);
+
     edit_menu->append(*Gtk::manage(new Gtk::MenuItem("Cut")));
     edit_menu->append(*Gtk::manage(new Gtk::MenuItem("Copy")));
     edit_menu->append(*Gtk::manage(new Gtk::MenuItem("Paste")));
@@ -254,7 +349,14 @@ int main(int argc, char *argv[])
 
     Gtk::Menu *pens_nested_menu = Gtk::manage(new Gtk::Menu());
 
-    pens_nested_menu->append(*Gtk::manage(new Gtk::MenuItem("Brush")));
+    Gtk::MenuItem *mouse_item = Gtk::manage(new Gtk::MenuItem("Mouse"));
+    pens_nested_menu->append(*mouse_item);
+    mouse_item->signal_activate().connect(sigc::mem_fun(notebook, &NotebookArea::set_tool_pan));
+
+    Gtk::MenuItem *brush_item = Gtk::manage(new Gtk::MenuItem("Brush"));
+    pens_nested_menu->append(*brush_item);
+    brush_item->signal_activate().connect(sigc::mem_fun(notebook, &NotebookArea::set_tool_brush));
+
     pens_nested_menu->append(*Gtk::manage(new Gtk::MenuItem("Marker")));
 
     pens_sub_item->set_submenu(*pens_nested_menu);
@@ -266,7 +368,6 @@ int main(int argc, char *argv[])
     menu_bar.append(*pen_item);
 
     main_box.pack_start(menu_bar, Gtk::PACK_SHRINK);
-
     main_box.pack_start(notebook);
 
     window.show_all();
