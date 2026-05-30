@@ -7,9 +7,15 @@ class NotebookArea : public Gtk::DrawingArea
 {
 public:
     bool show_new_pen_dialog = false;
+    bool beautify_enabled = false;
 
     enum class Tool { PAN, BRUSH };
     Tool current_tool = Tool::PAN;
+
+    void toggle_beautifier()
+    {
+        beautify_enabled = !beautify_enabled;
+    }
 
     void toggle_pen_dialog()
     {
@@ -77,6 +83,69 @@ protected:
     bool dragging = false;
 
     struct Point { double x, y; };
+
+    std::vector<Point> beautify_stroke(const std::vector<Point>& input)
+    {
+        if (input.size() < 3) return input;
+
+        double total_length = 0;
+        for (size_t i = 1; i < input.size(); ++i) {
+            double dx = input[i].x - input[i-1].x;
+            double dy = input[i].y - input[i-1].y;
+            total_length += std::sqrt(dx * dx + dy * dy);
+        }
+
+        Point start = input.front();
+        Point end = input.back();
+        double dx_end = end.x - start.x;
+        double dy_end = end.y - start.y;
+        double straight_distance = std::sqrt(dx_end * dx_end + dy_end * dy_end);
+
+        if (total_length > 0 && (straight_distance / total_length) > 0.85) {
+            if (std::abs(dx_end) < 14.0) {
+                end.x = start.x;
+            } else if (std::abs(dy_end) < 14.0) {
+                end.y = start.y;
+            }
+            return { start, end };
+        }
+
+        std::vector<Point> clean_stroke;
+        size_t start_idx = (input.size() > 6) ? 2 : 0;
+        size_t end_idx = (input.size() > 6) ? input.size() - 2 : input.size();
+        for (size_t i = start_idx; i < end_idx; ++i) {
+            clean_stroke.push_back(input[i]);
+        }
+        if (clean_stroke.size() < 3) return input;
+
+        std::vector<Point> filtered;
+        filtered.push_back(clean_stroke.front());
+        for (size_t i = 1; i < clean_stroke.size(); ++i) {
+            double dx = clean_stroke[i].x - filtered.back().x;
+            double dy = clean_stroke[i].y - filtered.back().y;
+            if (std::sqrt(dx * dx + dy * dy) > 3.0) {
+                filtered.push_back(clean_stroke[i]);
+            }
+        }
+        if (filtered.size() < 3) return filtered;
+
+        std::vector<Point> current = filtered;
+        for (int iter = 0; iter < 3; ++iter) {
+            std::vector<Point> next;
+            next.push_back(current.front());
+            for (size_t i = 0; i < current.size() - 1; ++i) {
+                Point p0 = current[i];
+                Point p1 = current[i+1];
+                next.push_back({0.75 * p0.x + 0.25 * p1.x, 0.75 * p0.y + 0.25 * p1.y});
+                next.push_back({0.25 * p0.x + 0.75 * p1.x, 0.25 * p0.y + 0.75 * p1.y});
+            }
+            next.push_back(current.back());
+            current = next;
+        }
+
+        return current;
+    }
+
     std::vector<std::vector<Point>> strokes;
     std::vector<std::vector<Point>> redo_strokes;
     std::vector<Point> current_stroke;
@@ -117,7 +186,11 @@ protected:
             else if (current_tool == Tool::BRUSH)
             {
                 if (!current_stroke.empty()) {
-                    strokes.push_back(current_stroke);
+                    if (beautify_enabled) {
+                        strokes.push_back(beautify_stroke(current_stroke));
+                    } else {
+                        strokes.push_back(current_stroke);
+                    }
                     current_stroke.clear();
                     redo_strokes.clear();
                 }
@@ -160,7 +233,6 @@ protected:
         const int width = allocation.get_width();
         const int height = allocation.get_height();
 
-        // background
         cr->set_source_rgb(0.965, 0.965, 0.975);
         cr->paint();
 
@@ -175,14 +247,12 @@ protected:
         if (start_x > 0) start_x -= grid;
         if (start_y > 0) start_y -= grid;
 
-        // vertical lines
         for (int x = start_x; x < width; x += grid)
         {
             cr->move_to(x + 0.5, 0);
             cr->line_to(x + 0.5, height);
         }
 
-        // horizontal lines
         for (int y = start_y; y < height; y += grid)
         {
             cr->move_to(0, y + 0.5);
@@ -216,7 +286,7 @@ protected:
             double box_w = 300, box_h = 400;
             double x = (width - box_w) / 2;
             double y = (height - box_h) / 2;
-            double radius = 24; // i love 24px br twin
+            double radius = 24;
 
             auto draw_rounded_rect = [&](double rx, double ry, double rw, double rh, double r)
             {
@@ -232,12 +302,10 @@ protected:
             {
                 double shadow_opacity = 0.03 * (13 - s) / 12.0;
                 cr->set_source_rgba(0.0, 0.0, 0.0, shadow_opacity);
-                // shadow effect (this is ai sorry)
                 draw_rounded_rect(x - s / 2.0, y - s / 2.0 + 4, box_w + s, box_h + s, radius + s / 2.0);
                 cr->fill();
             }
 
-            // LIQUID GLASSSSSS YEAAAH
             draw_rounded_rect(x, y, box_w, box_h, radius);
             cr->set_source_rgba(0.98, 0.98, 0.98, 0.90); 
             cr->fill_preserve();
@@ -298,7 +366,6 @@ int main(int argc, char *argv[])
 
     NotebookArea notebook;
 
-    // menu bar
     Gtk::MenuBar menu_bar;
 
     Gtk::Menu *file_menu = Gtk::manage(new Gtk::Menu());
@@ -319,6 +386,11 @@ int main(int argc, char *argv[])
     redo_item->add_accelerator("activate", accel_group, GDK_KEY_y, Gdk::CONTROL_MASK, Gtk::ACCEL_VISIBLE);
     redo_item->signal_activate().connect(sigc::mem_fun(notebook, &NotebookArea::redo));
     edit_menu->append(*redo_item);
+
+    Gtk::MenuItem *toggle_beautify_item = Gtk::manage(new Gtk::CheckMenuItem("Toggle Beautifier"));
+    toggle_beautify_item->add_accelerator("activate", accel_group, GDK_KEY_b, Gdk::CONTROL_MASK, Gtk::ACCEL_VISIBLE);
+    toggle_beautify_item->signal_activate().connect(sigc::mem_fun(notebook, &NotebookArea::toggle_beautifier));
+    edit_menu->append(*toggle_beautify_item);
 
     edit_menu->append(*Gtk::manage(new Gtk::MenuItem("Cut")));
     edit_menu->append(*Gtk::manage(new Gtk::MenuItem("Copy")));
