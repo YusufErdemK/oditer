@@ -9,7 +9,11 @@ public:
     bool show_new_pen_dialog = false;
     bool beautify_enabled = false;
 
-    enum class Tool { PAN, BRUSH };
+    enum class Tool
+    {
+        PAN,
+        BRUSH
+    };
     Tool current_tool = Tool::PAN;
 
     void toggle_beautifier()
@@ -27,14 +31,16 @@ public:
     {
         current_tool = Tool::BRUSH;
         auto window = get_window();
-        if (window) window->set_cursor(Gdk::Cursor::create(Gdk::PENCIL));
+        if (window)
+            window->set_cursor(Gdk::Cursor::create(Gdk::PENCIL));
     }
 
     void set_tool_pan()
     {
         current_tool = Tool::PAN;
         auto window = get_window();
-        if (window) window->set_cursor();
+        if (window)
+            window->set_cursor();
     }
 
     void undo()
@@ -82,16 +88,21 @@ protected:
 
     bool dragging = false;
 
-    struct Point { double x, y; };
-
-    std::vector<Point> beautify_stroke(const std::vector<Point>& input)
+    struct Point
     {
-        if (input.size() < 3) return input;
+        double x, y;
+    };
+
+    std::vector<Point> beautify_stroke(const std::vector<Point> &input)
+    {
+        if (input.size() < 3)
+            return input;
 
         double total_length = 0;
-        for (size_t i = 1; i < input.size(); ++i) {
-            double dx = input[i].x - input[i-1].x;
-            double dy = input[i].y - input[i-1].y;
+        for (size_t i = 1; i < input.size(); ++i)
+        {
+            double dx = input[i].x - input[i - 1].x;
+            double dy = input[i].y - input[i - 1].y;
             total_length += std::sqrt(dx * dx + dy * dy);
         }
 
@@ -101,41 +112,52 @@ protected:
         double dy_end = end.y - start.y;
         double straight_distance = std::sqrt(dx_end * dx_end + dy_end * dy_end);
 
-        if (total_length > 0 && (straight_distance / total_length) > 0.85) {
-            if (std::abs(dx_end) < 14.0) {
+        if (total_length > 0 && (straight_distance / total_length) > 0.85)
+        {
+            if (std::abs(dx_end) < 14.0)
+            {
                 end.x = start.x;
-            } else if (std::abs(dy_end) < 14.0) {
+            }
+            else if (std::abs(dy_end) < 14.0)
+            {
                 end.y = start.y;
             }
-            return { start, end };
+            return {start, end};
         }
 
         std::vector<Point> clean_stroke;
         size_t start_idx = (input.size() > 6) ? 2 : 0;
         size_t end_idx = (input.size() > 6) ? input.size() - 2 : input.size();
-        for (size_t i = start_idx; i < end_idx; ++i) {
+        for (size_t i = start_idx; i < end_idx; ++i)
+        {
             clean_stroke.push_back(input[i]);
         }
-        if (clean_stroke.size() < 3) return input;
+        if (clean_stroke.size() < 3)
+            return input;
 
         std::vector<Point> filtered;
         filtered.push_back(clean_stroke.front());
-        for (size_t i = 1; i < clean_stroke.size(); ++i) {
+        for (size_t i = 1; i < clean_stroke.size(); ++i)
+        {
             double dx = clean_stroke[i].x - filtered.back().x;
             double dy = clean_stroke[i].y - filtered.back().y;
-            if (std::sqrt(dx * dx + dy * dy) > 3.0) {
+            if (std::sqrt(dx * dx + dy * dy) > 3.0)
+            {
                 filtered.push_back(clean_stroke[i]);
             }
         }
-        if (filtered.size() < 3) return filtered;
+        if (filtered.size() < 3)
+            return filtered;
 
         std::vector<Point> current = filtered;
-        for (int iter = 0; iter < 3; ++iter) {
+        for (int iter = 0; iter < 3; ++iter)
+        {
             std::vector<Point> next;
             next.push_back(current.front());
-            for (size_t i = 0; i < current.size() - 1; ++i) {
+            for (size_t i = 0; i < current.size() - 1; ++i)
+            {
                 Point p0 = current[i];
-                Point p1 = current[i+1];
+                Point p1 = current[i + 1];
                 next.push_back({0.75 * p0.x + 0.25 * p1.x, 0.75 * p0.y + 0.25 * p1.y});
                 next.push_back({0.25 * p0.x + 0.75 * p1.x, 0.25 * p0.y + 0.75 * p1.y});
             }
@@ -161,7 +183,8 @@ protected:
             if (current_tool == Tool::PAN)
             {
                 auto window = get_window();
-                if (window) window->set_cursor(Gdk::Cursor::create(Gdk::HAND1));
+                if (window)
+                    window->set_cursor(Gdk::Cursor::create(Gdk::HAND1));
             }
             else if (current_tool == Tool::BRUSH)
             {
@@ -181,14 +204,19 @@ protected:
             if (current_tool == Tool::PAN)
             {
                 auto window = get_window();
-                if (window) window->set_cursor();
+                if (window)
+                    window->set_cursor();
             }
             else if (current_tool == Tool::BRUSH)
             {
-                if (!current_stroke.empty()) {
-                    if (beautify_enabled) {
+                if (!current_stroke.empty())
+                {
+                    if (beautify_enabled)
+                    {
                         strokes.push_back(beautify_stroke(current_stroke));
-                    } else {
+                    }
+                    else
+                    {
                         strokes.push_back(current_stroke);
                     }
                     current_stroke.clear();
@@ -244,8 +272,10 @@ protected:
         int start_x = (int)(-offset_x) % grid;
         int start_y = (int)(-offset_y) % grid;
 
-        if (start_x > 0) start_x -= grid;
-        if (start_y > 0) start_y -= grid;
+        if (start_x > 0)
+            start_x -= grid;
+        if (start_y > 0)
+            start_y -= grid;
 
         for (int x = start_x; x < width; x += grid)
         {
@@ -266,19 +296,23 @@ protected:
         cr->set_line_cap(Cairo::LINE_CAP_ROUND);
         cr->set_line_join(Cairo::LINE_JOIN_ROUND);
 
-        auto draw_stroke = [&](const std::vector<Point>& stroke) {
-            if (stroke.empty()) return;
+        auto draw_stroke = [&](const std::vector<Point> &stroke)
+        {
+            if (stroke.empty())
+                return;
             cr->move_to(stroke[0].x - offset_x, stroke[0].y - offset_y);
-            for (size_t i = 1; i < stroke.size(); ++i) {
+            for (size_t i = 1; i < stroke.size(); ++i)
+            {
                 cr->line_to(stroke[i].x - offset_x, stroke[i].y - offset_y);
             }
             cr->stroke();
         };
 
-        for (const auto& stroke : strokes) {
+        for (const auto &stroke : strokes)
+        {
             draw_stroke(stroke);
         }
-        
+
         draw_stroke(current_stroke);
 
         if (show_new_pen_dialog)
@@ -307,7 +341,7 @@ protected:
             }
 
             draw_rounded_rect(x, y, box_w, box_h, radius);
-            cr->set_source_rgba(0.98, 0.98, 0.98, 0.90); 
+            cr->set_source_rgba(0.98, 0.98, 0.98, 0.90);
             cr->fill_preserve();
 
             cr->set_line_width(1.0);
@@ -325,7 +359,7 @@ protected:
             for (int i = 0; i < 360; i++)
             {
                 double angle1 = i * M_PI / 180.0;
-                double angle2 = (i + 1.5) * M_PI / 180.0; 
+                double angle2 = (i + 1.5) * M_PI / 180.0;
 
                 cr->set_source_rgb(
                     0.5 + 0.5 * sin(angle1),
@@ -373,9 +407,21 @@ int main(int argc, char *argv[])
     Gtk::Menu *window_menu = Gtk::manage(new Gtk::Menu());
     Gtk::Menu *pen_menu = Gtk::manage(new Gtk::Menu());
 
-    file_menu->append(*Gtk::manage(new Gtk::MenuItem("New")));
-    file_menu->append(*Gtk::manage(new Gtk::MenuItem("Open")));
-    file_menu->append(*Gtk::manage(new Gtk::MenuItem("Quit")));
+    Gtk::MenuItem *new_item = Gtk::manage(new Gtk::MenuItem("New"));
+    new_item->add_accelerator("activate", accel_group, GDK_KEY_n, Gdk::CONTROL_MASK, Gtk::ACCEL_VISIBLE);
+    file_menu->append(*new_item);
+
+    Gtk::MenuItem *open_item = Gtk::manage(new Gtk::MenuItem("Open"));
+    open_item->add_accelerator("activate", accel_group, GDK_KEY_o, Gdk::CONTROL_MASK, Gtk::ACCEL_VISIBLE);
+    file_menu->append(*open_item);
+
+    Gtk::MenuItem *save_item = Gtk::manage(new Gtk::MenuItem("Save"));
+    save_item->add_accelerator("activate", accel_group, GDK_KEY_S, Gdk::CONTROL_MASK, Gtk::ACCEL_VISIBLE);
+    file_menu->append(*save_item);
+
+    Gtk::MenuItem *quit_item = Gtk::manage(new Gtk::MenuItem("Quit"));
+    quit_item->add_accelerator("activate", accel_group, GDK_KEY_F4, Gdk::MOD1_MASK, Gtk::ACCEL_VISIBLE);
+    file_menu->append(*quit_item);
 
     Gtk::MenuItem *undo_item = Gtk::manage(new Gtk::MenuItem("Undo"));
     undo_item->add_accelerator("activate", accel_group, GDK_KEY_z, Gdk::CONTROL_MASK, Gtk::ACCEL_VISIBLE);
