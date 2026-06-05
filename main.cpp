@@ -114,6 +114,8 @@ protected:
     double last_x = 0;
     double last_y = 0;
 
+    double r = 0.1, g = 0.1, b = 0.15;
+
     bool dragging = false;
 
     struct Point
@@ -326,7 +328,7 @@ protected:
         cr->stroke();
 
         cr->set_line_width(2.5);
-        cr->set_source_rgba(0.1, 0.1, 0.15, 0.9);
+        cr->set_source_rgba(r, g, b, 0.9);
         cr->set_line_cap(Cairo::LINE_CAP_ROUND);
         cr->set_line_join(Cairo::LINE_JOIN_ROUND);
 
@@ -364,6 +366,57 @@ protected:
             box->set_margin_end(16);
 
             dialog->add(*box);
+
+            auto r_scale = Gtk::make_managed<Gtk::Scale>(Gtk::ORIENTATION_HORIZONTAL);
+            auto g_scale = Gtk::make_managed<Gtk::Scale>(Gtk::ORIENTATION_HORIZONTAL);
+            auto b_scale = Gtk::make_managed<Gtk::Scale>(Gtk::ORIENTATION_HORIZONTAL);
+
+            r_scale->set_range(0.0, 1.0);
+            g_scale->set_range(0.0, 1.0);
+            b_scale->set_range(0.0, 1.0);
+
+            r_scale->set_value(r);
+            g_scale->set_value(g);
+            b_scale->set_value(b);
+
+            r_scale->signal_value_changed().connect([this, r_scale]()
+                                                    { r = r_scale->get_value(); });
+
+            g_scale->signal_value_changed().connect([this, g_scale]()
+                                                    { g = g_scale->get_value(); });
+
+            b_scale->signal_value_changed().connect([this, b_scale]()
+                                                    { b = b_scale->get_value(); });
+
+            auto preview = Gtk::make_managed<Gtk::DrawingArea>();
+            preview->set_size_request(50, 50);
+
+            preview->signal_draw().connect([this](const Cairo::RefPtr<Cairo::Context> &cr)
+                                           {
+                cr->set_source_rgb(r, g, b);
+                cr->rectangle(0, 0, 50, 50);
+                cr->fill();
+                return true; });
+
+            r_scale->signal_value_changed().connect([this, r_scale, preview]()
+                                                    {
+    r = r_scale->get_value();
+    preview->queue_draw(); });
+
+            g_scale->signal_value_changed().connect([this, g_scale, preview]()
+                                                    {
+    g = g_scale->get_value();
+    preview->queue_draw(); });
+
+            b_scale->signal_value_changed().connect([this, b_scale, preview]()
+                                                    {
+    b = b_scale->get_value();
+    preview->queue_draw(); });
+
+            box->pack_start(*r_scale);
+            box->pack_start(*g_scale);
+            box->pack_start(*b_scale);
+            box->pack_start(*preview);
 
             dialog->signal_hide().connect([dialog]()
                                           { delete dialog; });
