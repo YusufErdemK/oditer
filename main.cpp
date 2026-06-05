@@ -2,8 +2,36 @@
 #include <gdk/gdkkeysyms.h>
 #include <cmath>
 #include <vector>
+#include <poppler.h>
+#include <giomm/file.h>
 
-class NotebookArea : public Gtk::DrawingArea
+class PDF
+{
+protected:
+    Cairo::RefPtr<Cairo::ImageSurface> pdf_surface;
+
+public:
+    bool PDFloader(const std::string &path)
+    {
+        PopplerDocument *doc = poppler_document_new_from_file(("file://" + path).c_str(), nullptr, nullptr);
+        if (!doc)
+            return false;
+
+        PopplerPage *page = poppler_document_get_page(doc, 0);
+        double w, h;
+        poppler_page_get_size(page, &w, &h);
+
+        pdf_surface = Cairo::ImageSurface::create(Cairo::FORMAT_ARGB32, (int)w, (int)h);
+        auto cr = Cairo::Context::create(pdf_surface);
+        poppler_page_render(page, cr->cobj());
+
+        g_object_unref(page);
+        g_object_unref(doc);
+        return true;
+    }
+};
+
+class NotebookArea : public Gtk::DrawingArea, public PDF
 {
 public:
     bool show_new_pen_dialog = false;
@@ -264,6 +292,12 @@ protected:
         cr->set_source_rgb(0.965, 0.965, 0.975);
         cr->paint();
 
+        if (pdf_surface)
+        {
+            cr->set_source(pdf_surface, -offset_x, -offset_y);
+            cr->paint();
+        }
+
         const int grid = 28;
 
         cr->set_source_rgba(0.82, 0.84, 0.88, 0.75);
@@ -414,6 +448,18 @@ int main(int argc, char *argv[])
     Gtk::MenuItem *open_item = Gtk::manage(new Gtk::MenuItem("Open"));
     open_item->add_accelerator("activate", accel_group, GDK_KEY_o, Gdk::CONTROL_MASK, Gtk::ACCEL_VISIBLE);
     file_menu->append(*open_item);
+
+    open_item->signal_activate().connect([&window, &notebook]()
+                                         {
+        Gtk::FileChooserDialog dialog(window, "Please select a PDF file", Gtk::FILE_CHOOSER_ACTION_OPEN);
+        dialog.add_button("Cancel", Gtk::RESPONSE_CANCEL);
+        dialog.add_button("Open", Gtk::RESPONSE_OK);
+
+        if (dialog.run() == Gtk::RESPONSE_OK) {
+            if (notebook.PDFloader(dialog.get_filename())) {
+                notebook.queue_draw();
+            }
+        } });
 
     Gtk::MenuItem *save_item = Gtk::manage(new Gtk::MenuItem("Save"));
     save_item->add_accelerator("activate", accel_group, GDK_KEY_S, Gdk::CONTROL_MASK, Gtk::ACCEL_VISIBLE);
