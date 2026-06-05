@@ -351,67 +351,24 @@ protected:
 
         if (show_new_pen_dialog)
         {
-            double box_w = 300, box_h = 400;
-            double x = (width - box_w) / 2;
-            double y = (height - box_h) / 2;
-            double radius = 24;
+            show_new_pen_dialog = false;
 
-            auto draw_rounded_rect = [&](double rx, double ry, double rw, double rh, double r)
-            {
-                cr->begin_new_sub_path();
-                cr->arc(rx + rw - r, ry + r, r, -M_PI / 2, 0);
-                cr->arc(rx + rw - r, ry + rh - r, r, 0, M_PI / 2);
-                cr->arc(rx + r, ry + rh - r, r, M_PI / 2, M_PI);
-                cr->arc(rx + r, ry + r, r, M_PI, 3 * M_PI / 2);
-                cr->close_path();
-            };
+            auto dialog = new Gtk::Window();
+            dialog->set_title("Create Pen");
+            dialog->set_default_size(270, 300);
 
-            for (int s = 1; s <= 12; s++)
-            {
-                double shadow_opacity = 0.03 * (13 - s) / 12.0;
-                cr->set_source_rgba(0.0, 0.0, 0.0, shadow_opacity);
-                draw_rounded_rect(x - s / 2.0, y - s / 2.0 + 4, box_w + s, box_h + s, radius + s / 2.0);
-                cr->fill();
-            }
+            auto box = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_VERTICAL, 12);
+            box->set_margin_top(16);
+            box->set_margin_bottom(16);
+            box->set_margin_start(16);
+            box->set_margin_end(16);
 
-            draw_rounded_rect(x, y, box_w, box_h, radius);
-            cr->set_source_rgba(0.98, 0.98, 0.98, 0.90);
-            cr->fill_preserve();
+            dialog->add(*box);
 
-            cr->set_line_width(1.0);
-            cr->set_source_rgba(1.0, 1.0, 1.0, 1.0);
-            cr->stroke_preserve();
+            dialog->signal_hide().connect([dialog]()
+                                          { delete dialog; });
 
-            cr->set_line_width(0.5);
-            cr->set_source_rgba(0.0, 0.0, 0.0, 0.15);
-            cr->stroke();
-
-            double cx = x + box_w / 2;
-            double cy = y + 150;
-            double r_outer = 65, r_inner = 45;
-
-            for (int i = 0; i < 360; i++)
-            {
-                double angle1 = i * M_PI / 180.0;
-                double angle2 = (i + 1.5) * M_PI / 180.0;
-
-                cr->set_source_rgb(
-                    0.5 + 0.5 * sin(angle1),
-                    0.5 + 0.5 * sin(angle1 + 2.09439),
-                    0.5 + 0.5 * sin(angle1 + 4.18879));
-                cr->arc(cx, cy, r_outer, angle1, angle2);
-                cr->arc_negative(cx, cy, r_inner, angle2, angle1);
-                cr->fill();
-            }
-
-            cr->set_line_width(0.5);
-            cr->set_source_rgba(0.0, 0.0, 0.0, 0.1);
-
-            cr->arc(cx, cy, r_outer, 0, 2 * M_PI);
-            cr->stroke();
-
-            cr->arc(cx, cy, r_inner, 0, 2 * M_PI);
-            cr->stroke();
+            dialog->show_all();
         }
 
         return true;
