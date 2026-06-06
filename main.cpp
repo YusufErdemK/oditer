@@ -37,13 +37,6 @@ public:
     bool show_new_pen_dialog = false;
     bool beautify_enabled = false;
 
-    void clear_document()
-    {
-        strokes.clear();
-        redo_strokes.clear();
-        current_stroke.clear();
-    }
-
     enum class Tool
     {
         PAN,
@@ -51,11 +44,27 @@ public:
     };
     Tool current_tool = Tool::PAN;
 
-    void toggle_beautifier()
+    NotebookArea()
     {
-        beautify_enabled = !beautify_enabled;
+        add_events(Gdk::BUTTON_PRESS_MASK |
+                   Gdk::BUTTON_RELEASE_MASK |
+                   Gdk::POINTER_MOTION_MASK |
+                   Gdk::SCROLL_MASK);
+
+        signal_button_press_event().connect(
+            sigc::mem_fun(*this, &NotebookArea::on_button_press), false);
+
+        signal_button_release_event().connect(
+            sigc::mem_fun(*this, &NotebookArea::on_button_release), false);
+
+        signal_motion_notify_event().connect(
+            sigc::mem_fun(*this, &NotebookArea::on_mouse_move), false);
+
+        signal_scroll_event().connect(
+            sigc::mem_fun(*this, &NotebookArea::on_scroll), false);
     }
 
+    void toggle_beautifier() { beautify_enabled = !beautify_enabled; }
     void toggle_pen_dialog()
     {
         show_new_pen_dialog = !show_new_pen_dialog;
@@ -65,17 +74,23 @@ public:
     void set_tool_brush()
     {
         current_tool = Tool::BRUSH;
-        auto window = get_window();
-        if (window)
-            window->set_cursor(Gdk::Cursor::create(Gdk::PENCIL));
+        if (auto win = get_window())
+            win->set_cursor(Gdk::Cursor::create(Gdk::PENCIL));
     }
 
     void set_tool_pan()
     {
         current_tool = Tool::PAN;
-        auto window = get_window();
-        if (window)
-            window->set_cursor();
+        if (auto win = get_window())
+            win->set_cursor();
+    }
+
+    void clear_document()
+    {
+        strokes.clear();
+        redo_strokes.clear();
+        current_stroke.clear();
+        queue_draw();
     }
 
     void undo()
@@ -98,238 +113,150 @@ public:
         }
     }
 
-    NotebookArea()
-    {
-        add_events(Gdk::BUTTON_PRESS_MASK |
-                   Gdk::BUTTON_RELEASE_MASK |
-                   Gdk::POINTER_MOTION_MASK);
-
-        signal_button_press_event().connect(
-            sigc::mem_fun(*this, &NotebookArea::on_button_press), false);
-
-        signal_button_release_event().connect(
-            sigc::mem_fun(*this, &NotebookArea::on_button_release), false);
-
-        signal_motion_notify_event().connect(
-            sigc::mem_fun(*this, &NotebookArea::on_mouse_move), false);
-    }
-
 protected:
-    double offset_x = 0;
-    double offset_y = 0;
-
-    double last_x = 0;
-    double last_y = 0;
-
-    double r = 0.1, g = 0.1, b = 0.15;
-
-    bool dragging = false;
-
     struct Point
     {
         double x, y;
     };
 
-    std::vector<Point> beautify_stroke(const std::vector<Point> &input)
-    {
-        if (input.size() < 3)
-            return input;
-
-        double total_length = 0;
-        for (size_t i = 1; i < input.size(); ++i)
-        {
-            double dx = input[i].x - input[i - 1].x;
-            double dy = input[i].y - input[i - 1].y;
-            total_length += std::sqrt(dx * dx + dy * dy);
-        }
-
-        Point start = input.front();
-        Point end = input.back();
-        double dx_end = end.x - start.x;
-        double dy_end = end.y - start.y;
-        double straight_distance = std::sqrt(dx_end * dx_end + dy_end * dy_end);
-
-        if (total_length > 0 && (straight_distance / total_length) > 0.85)
-        {
-            if (std::abs(dx_end) < 14.0)
-            {
-                end.x = start.x;
-            }
-            else if (std::abs(dy_end) < 14.0)
-            {
-                end.y = start.y;
-            }
-            return {start, end};
-        }
-
-        std::vector<Point> clean_stroke;
-        size_t start_idx = (input.size() > 6) ? 2 : 0;
-        size_t end_idx = (input.size() > 6) ? input.size() - 2 : input.size();
-        for (size_t i = start_idx; i < end_idx; ++i)
-        {
-            clean_stroke.push_back(input[i]);
-        }
-        if (clean_stroke.size() < 3)
-            return input;
-
-        std::vector<Point> filtered;
-        filtered.push_back(clean_stroke.front());
-        for (size_t i = 1; i < clean_stroke.size(); ++i)
-        {
-            double dx = clean_stroke[i].x - filtered.back().x;
-            double dy = clean_stroke[i].y - filtered.back().y;
-            if (std::sqrt(dx * dx + dy * dy) > 3.0)
-            {
-                filtered.push_back(clean_stroke[i]);
-            }
-        }
-        if (filtered.size() < 3)
-            return filtered;
-
-        std::vector<Point> current = filtered;
-        for (int iter = 0; iter < 3; ++iter)
-        {
-            std::vector<Point> next;
-            next.push_back(current.front());
-            for (size_t i = 0; i < current.size() - 1; ++i)
-            {
-                Point p0 = current[i];
-                Point p1 = current[i + 1];
-                next.push_back({0.75 * p0.x + 0.25 * p1.x, 0.75 * p0.y + 0.25 * p1.y});
-                next.push_back({0.25 * p0.x + 0.75 * p1.x, 0.25 * p0.y + 0.75 * p1.y});
-            }
-            next.push_back(current.back());
-            current = next;
-        }
-
-        return current;
-    }
-
     std::vector<std::vector<Point>> strokes;
     std::vector<std::vector<Point>> redo_strokes;
     std::vector<Point> current_stroke;
 
+    double offset_x = 0;
+    double offset_y = 0;
+    double zoom = 1.0;
+
+    double last_x = 0;
+    double last_y = 0;
+    bool dragging = false;
+
+    double r = 0.1, g = 0.1, b = 0.15;
+
+    Point screen_to_world(double x, double y)
+    {
+        return {
+            (x / zoom) + offset_x,
+            (y / zoom) + offset_y};
+    }
+
+    bool on_scroll(GdkEventScroll *event)
+    {
+        double old_zoom = zoom;
+
+        if (event->direction == GDK_SCROLL_UP)
+            zoom *= 1.1;
+        else if (event->direction == GDK_SCROLL_DOWN)
+            zoom /= 1.1;
+
+        zoom = std::clamp(zoom, 0.2, 5.0);
+
+        double mx = event->x;
+        double my = event->y;
+
+        offset_x += (mx / old_zoom - mx / zoom);
+        offset_y += (my / old_zoom - my / zoom);
+
+        queue_draw();
+        return true;
+    }
+
     bool on_button_press(GdkEventButton *event)
     {
-        if (event->button == 1)
-        {
-            dragging = true;
-            last_x = event->x;
-            last_y = event->y;
+        if (event->button != 1)
+            return true;
 
-            if (current_tool == Tool::PAN)
-            {
-                auto window = get_window();
-                if (window)
-                    window->set_cursor(Gdk::Cursor::create(Gdk::HAND1));
-            }
-            else if (current_tool == Tool::BRUSH)
-            {
-                current_stroke.clear();
-                current_stroke.push_back({event->x + offset_x, event->y + offset_y});
-            }
+        dragging = true;
+        last_x = event->x;
+        last_y = event->y;
+
+        if (current_tool == Tool::BRUSH)
+        {
+            current_stroke.clear();
+            current_stroke.push_back(screen_to_world(event->x, event->y));
         }
+
         return true;
     }
 
     bool on_button_release(GdkEventButton *event)
     {
-        if (event->button == 1)
-        {
-            dragging = false;
+        if (event->button != 1)
+            return true;
 
-            if (current_tool == Tool::PAN)
-            {
-                auto window = get_window();
-                if (window)
-                    window->set_cursor();
-            }
-            else if (current_tool == Tool::BRUSH)
-            {
-                if (!current_stroke.empty())
-                {
-                    if (beautify_enabled)
-                    {
-                        strokes.push_back(beautify_stroke(current_stroke));
-                    }
-                    else
-                    {
-                        strokes.push_back(current_stroke);
-                    }
-                    current_stroke.clear();
-                    redo_strokes.clear();
-                }
-                queue_draw();
-            }
+        dragging = false;
+
+        if (current_tool == Tool::BRUSH && !current_stroke.empty())
+        {
+            strokes.push_back(current_stroke);
+            current_stroke.clear();
+            redo_strokes.clear();
         }
+
+        queue_draw();
         return true;
     }
 
     bool on_mouse_move(GdkEventMotion *event)
     {
-        if (dragging)
+        if (!dragging)
+            return true;
+
+        if (current_tool == Tool::PAN)
         {
-            if (current_tool == Tool::PAN)
-            {
-                double dx = event->x - last_x;
-                double dy = event->y - last_y;
+            double dx = event->x - last_x;
+            double dy = event->y - last_y;
 
-                offset_x -= dx;
-                offset_y -= dy;
+            offset_x -= dx / zoom;
+            offset_y -= dy / zoom;
 
-                last_x = event->x;
-                last_y = event->y;
+            last_x = event->x;
+            last_y = event->y;
 
-                queue_draw();
-            }
-            else if (current_tool == Tool::BRUSH)
-            {
-                current_stroke.push_back({event->x + offset_x, event->y + offset_y});
-                queue_draw();
-            }
+            queue_draw();
         }
+        else if (current_tool == Tool::BRUSH)
+        {
+            current_stroke.push_back(screen_to_world(event->x, event->y));
+            queue_draw();
+        }
+
         return true;
     }
 
     bool on_draw(const Cairo::RefPtr<Cairo::Context> &cr) override
     {
-        Gtk::Allocation allocation = get_allocation();
-
-        const int width = allocation.get_width();
-        const int height = allocation.get_height();
+        auto alloc = get_allocation();
+        int w = alloc.get_width();
+        int h = alloc.get_height();
 
         cr->set_source_rgb(0.965, 0.965, 0.975);
         cr->paint();
 
+        cr->save();
+        cr->scale(zoom, zoom);
+        cr->translate(-offset_x, -offset_y);
+
         if (pdf_surface)
         {
-            cr->set_source(pdf_surface, -offset_x, -offset_y);
+            cr->set_source(pdf_surface, 0, 0);
             cr->paint();
         }
 
         const int grid = 28;
-
         cr->set_source_rgba(0.82, 0.84, 0.88, 0.75);
         cr->set_line_width(1.0);
 
-        int start_x = (int)(-offset_x) % grid;
-        int start_y = (int)(-offset_y) % grid;
-
-        if (start_x > 0)
-            start_x -= grid;
-        if (start_y > 0)
-            start_y -= grid;
-
-        for (int x = start_x; x < width; x += grid)
+        for (int x = -10000; x < 10000; x += grid)
         {
-            cr->move_to(x + 0.5, 0);
-            cr->line_to(x + 0.5, height);
+            cr->move_to(x, -10000);
+            cr->line_to(x, 10000);
         }
 
-        for (int y = start_y; y < height; y += grid)
+        for (int y = -10000; y < 10000; y += grid)
         {
-            cr->move_to(0, y + 0.5);
-            cr->line_to(width, y + 0.5);
+            cr->move_to(-10000, y);
+            cr->line_to(10000, y);
         }
 
         cr->stroke();
@@ -339,97 +266,21 @@ protected:
         cr->set_line_cap(Cairo::LINE_CAP_ROUND);
         cr->set_line_join(Cairo::LINE_JOIN_ROUND);
 
-        auto draw_stroke = [&](const std::vector<Point> &stroke)
+        auto draw = [&](const std::vector<Point> &s)
         {
-            if (stroke.empty())
+            if (s.empty())
                 return;
-            cr->move_to(stroke[0].x - offset_x, stroke[0].y - offset_y);
-            for (size_t i = 1; i < stroke.size(); ++i)
-            {
-                cr->line_to(stroke[i].x - offset_x, stroke[i].y - offset_y);
-            }
+            cr->move_to(s[0].x, s[0].y);
+            for (auto &p : s)
+                cr->line_to(p.x, p.y);
             cr->stroke();
         };
 
-        for (const auto &stroke : strokes)
-        {
-            draw_stroke(stroke);
-        }
+        for (auto &s : strokes)
+            draw(s);
+        draw(current_stroke);
 
-        draw_stroke(current_stroke);
-
-        if (show_new_pen_dialog)
-        {
-            show_new_pen_dialog = false;
-
-            auto dialog = new Gtk::Window();
-            dialog->set_title("Create Pen");
-            dialog->set_default_size(270, 300);
-
-            auto box = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_VERTICAL, 12);
-            box->set_margin_top(16);
-            box->set_margin_bottom(16);
-            box->set_margin_start(16);
-            box->set_margin_end(16);
-
-            dialog->add(*box);
-
-            auto r_scale = Gtk::make_managed<Gtk::Scale>(Gtk::ORIENTATION_HORIZONTAL);
-            auto g_scale = Gtk::make_managed<Gtk::Scale>(Gtk::ORIENTATION_HORIZONTAL);
-            auto b_scale = Gtk::make_managed<Gtk::Scale>(Gtk::ORIENTATION_HORIZONTAL);
-
-            r_scale->set_range(0.0, 1.0);
-            g_scale->set_range(0.0, 1.0);
-            b_scale->set_range(0.0, 1.0);
-
-            r_scale->set_value(r);
-            g_scale->set_value(g);
-            b_scale->set_value(b);
-
-            r_scale->signal_value_changed().connect([this, r_scale]()
-                                                    { r = r_scale->get_value(); });
-
-            g_scale->signal_value_changed().connect([this, g_scale]()
-                                                    { g = g_scale->get_value(); });
-
-            b_scale->signal_value_changed().connect([this, b_scale]()
-                                                    { b = b_scale->get_value(); });
-
-            auto preview = Gtk::make_managed<Gtk::DrawingArea>();
-            preview->set_size_request(50, 50);
-
-            preview->signal_draw().connect([this](const Cairo::RefPtr<Cairo::Context> &cr)
-                                           {
-                cr->set_source_rgb(r, g, b);
-                cr->rectangle(0, 0, 50, 50);
-                cr->fill();
-                return true; });
-
-            r_scale->signal_value_changed().connect([this, r_scale, preview]()
-                                                    {
-    r = r_scale->get_value();
-    preview->queue_draw(); });
-
-            g_scale->signal_value_changed().connect([this, g_scale, preview]()
-                                                    {
-    g = g_scale->get_value();
-    preview->queue_draw(); });
-
-            b_scale->signal_value_changed().connect([this, b_scale, preview]()
-                                                    {
-    b = b_scale->get_value();
-    preview->queue_draw(); });
-
-            box->pack_start(*r_scale);
-            box->pack_start(*g_scale);
-            box->pack_start(*b_scale);
-            box->pack_start(*preview);
-
-            dialog->signal_hide().connect([dialog]()
-                                          { delete dialog; });
-
-            dialog->show_all();
-        }
+        cr->restore();
 
         return true;
     }
@@ -512,7 +363,7 @@ int main(int argc, char *argv[])
     redo_item->signal_activate().connect(sigc::mem_fun(notebook, &NotebookArea::redo));
     edit_menu->append(*redo_item);
 
-    Gtk::MenuItem *toggle_beautify_item = Gtk::manage(new Gtk::CheckMenuItem("Toggle Beautifier"));
+    Gtk::MenuItem *toggle_beautify_item = Gtk::manage(new Gtk::CheckMenuItem("Beautifier"));
     toggle_beautify_item->add_accelerator("activate", accel_group, GDK_KEY_b, Gdk::CONTROL_MASK, Gtk::ACCEL_VISIBLE);
     toggle_beautify_item->signal_activate().connect(sigc::mem_fun(notebook, &NotebookArea::toggle_beautifier));
     edit_menu->append(*toggle_beautify_item);
