@@ -37,6 +37,13 @@ public:
     bool show_new_pen_dialog = false;
     bool beautify_enabled = false;
 
+    void clear_document()
+    {
+        strokes.clear();
+        redo_strokes.clear();
+        current_stroke.clear();
+    }
+
     enum class Tool
     {
         PAN,
@@ -455,6 +462,11 @@ int main(int argc, char *argv[])
     new_item->add_accelerator("activate", accel_group, GDK_KEY_n, Gdk::CONTROL_MASK, Gtk::ACCEL_VISIBLE);
     file_menu->append(*new_item);
 
+    new_item->signal_activate().connect([&]()
+                                        {
+    notebook.clear_document();
+    notebook.queue_draw(); });
+
     Gtk::MenuItem *open_item = Gtk::manage(new Gtk::MenuItem("Open"));
     open_item->add_accelerator("activate", accel_group, GDK_KEY_o, Gdk::CONTROL_MASK, Gtk::ACCEL_VISIBLE);
     file_menu->append(*open_item);
@@ -475,9 +487,20 @@ int main(int argc, char *argv[])
     save_item->add_accelerator("activate", accel_group, GDK_KEY_S, Gdk::CONTROL_MASK, Gtk::ACCEL_VISIBLE);
     file_menu->append(*save_item);
 
+    save_item->signal_activate().connect([&window, &notebook]()
+                                         {
+        Gtk::FileChooserDialog dialog(window, "Please select a location to save", Gtk::FILE_CHOOSER_ACTION_SAVE);
+        dialog.add_button("Cancel", Gtk::RESPONSE_CANCEL);
+        dialog.add_button("Save", Gtk::RESPONSE_OK);
+
+        if (dialog.run() == Gtk::RESPONSE_OK) {
+        } });
+
     Gtk::MenuItem *quit_item = Gtk::manage(new Gtk::MenuItem("Quit"));
     quit_item->add_accelerator("activate", accel_group, GDK_KEY_F4, Gdk::MOD1_MASK, Gtk::ACCEL_VISIBLE);
     file_menu->append(*quit_item);
+
+    quit_item->signal_activate().connect(sigc::ptr_fun(&Gtk::Main::quit));
 
     Gtk::MenuItem *undo_item = Gtk::manage(new Gtk::MenuItem("Undo"));
     undo_item->add_accelerator("activate", accel_group, GDK_KEY_z, Gdk::CONTROL_MASK, Gtk::ACCEL_VISIBLE);
@@ -494,12 +517,30 @@ int main(int argc, char *argv[])
     toggle_beautify_item->signal_activate().connect(sigc::mem_fun(notebook, &NotebookArea::toggle_beautifier));
     edit_menu->append(*toggle_beautify_item);
 
-    edit_menu->append(*Gtk::manage(new Gtk::MenuItem("Cut")));
-    edit_menu->append(*Gtk::manage(new Gtk::MenuItem("Copy")));
-    edit_menu->append(*Gtk::manage(new Gtk::MenuItem("Paste")));
+    Gtk::MenuItem *cut_item = Gtk::manage(new Gtk::MenuItem("Cut"));
+    cut_item->add_accelerator("activate", accel_group, GDK_KEY_x, Gdk::CONTROL_MASK, Gtk::ACCEL_VISIBLE);
+    edit_menu->append(*cut_item);
 
-    window_menu->append(*Gtk::manage(new Gtk::MenuItem("Maximize")));
-    window_menu->append(*Gtk::manage(new Gtk::MenuItem("Minimize")));
+    Gtk::MenuItem *copy_item = Gtk::manage(new Gtk::MenuItem("Copy"));
+    copy_item->add_accelerator("activate", accel_group, GDK_KEY_c, Gdk::CONTROL_MASK, Gtk::ACCEL_VISIBLE);
+    edit_menu->append(*copy_item);
+
+    Gtk::MenuItem *paste_item = Gtk::manage(new Gtk::MenuItem("Paste"));
+    paste_item->add_accelerator("activate", accel_group, GDK_KEY_v, Gdk::CONTROL_MASK, Gtk::ACCEL_VISIBLE);
+    edit_menu->append(*paste_item);
+
+    Gtk::MenuItem *maximize_item = Gtk::manage(new Gtk::MenuItem("Maximize"));
+    maximize_item->signal_activate().connect([&window]()
+                                             { window.maximize(); });
+    window_menu->append(*maximize_item);
+
+    Gtk::MenuItem *minimize_item = Gtk::manage(new Gtk::MenuItem("Minimize"));
+    minimize_item->signal_activate().connect([&window]()
+                                             { window.iconify(); });
+    window_menu->append(*minimize_item);
+
+    // window_menu->append(*Gtk::manage(new Gtk::MenuItem("Maximize")));
+    // window_menu->append(*Gtk::manage(new Gtk::MenuItem("Minimize")));
 
     Gtk::MenuItem *create_pen_item = Gtk::manage(new Gtk::MenuItem("Create Pen"));
     pen_menu->append(*create_pen_item);
@@ -524,10 +565,12 @@ int main(int argc, char *argv[])
     Gtk::Menu *pens_nested_menu = Gtk::manage(new Gtk::Menu());
 
     Gtk::MenuItem *mouse_item = Gtk::manage(new Gtk::MenuItem("Mouse"));
+    mouse_item->add_accelerator("activate", accel_group, GDK_KEY_1, (Gdk::ModifierType)0, Gtk::ACCEL_VISIBLE);
     pens_nested_menu->append(*mouse_item);
     mouse_item->signal_activate().connect(sigc::mem_fun(notebook, &NotebookArea::set_tool_pan));
 
     Gtk::MenuItem *brush_item = Gtk::manage(new Gtk::MenuItem("Brush"));
+    brush_item->add_accelerator("activate", accel_group, GDK_KEY_2, (Gdk::ModifierType)0, Gtk::ACCEL_VISIBLE);
     pens_nested_menu->append(*brush_item);
     brush_item->signal_activate().connect(sigc::mem_fun(notebook, &NotebookArea::set_tool_brush));
 
