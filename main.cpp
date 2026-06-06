@@ -288,35 +288,110 @@ protected:
 
             auto dialog = new Gtk::Window();
             dialog->set_title("Create Pen");
-            dialog->set_default_size(270, 300);
+            dialog->set_default_size(320, 360);
+            dialog->set_resizable(false);
 
-            auto box = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_VERTICAL, 12);
+            auto box = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_VERTICAL, 10);
+            box->set_margin_top(12);
+            box->set_margin_bottom(12);
+            box->set_margin_start(12);
+            box->set_margin_end(12);
             dialog->add(*box);
 
-            auto r_scale = Gtk::make_managed<Gtk::Scale>(Gtk::ORIENTATION_HORIZONTAL);
-            auto g_scale = Gtk::make_managed<Gtk::Scale>(Gtk::ORIENTATION_HORIZONTAL);
-            auto b_scale = Gtk::make_managed<Gtk::Scale>(Gtk::ORIENTATION_HORIZONTAL);
+            auto preview = Gtk::make_managed<Gtk::DrawingArea>();
+            preview->set_size_request(80, 80);
 
-            r_scale->set_range(0, 1);
-            g_scale->set_range(0, 1);
-            b_scale->set_range(0, 1);
+            preview->signal_draw().connect([this](const Cairo::RefPtr<Cairo::Context> &cr)
+                                           {
+        cr->set_source_rgb(r, g, b);
+        cr->set_line_width(6);
+        cr->set_line_cap(Cairo::LINE_CAP_ROUND);
+
+        cr->move_to(10, 60);
+        cr->line_to(70, 20);
+        cr->stroke();
+
+        return true; });
+
+            auto mk_slider = [](const char *label)
+            {
+                auto box = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_VERTICAL, 4);
+
+                auto lbl = Gtk::make_managed<Gtk::Label>(label);
+                lbl->set_xalign(0);
+
+                auto scale = Gtk::make_managed<Gtk::Scale>(Gtk::ORIENTATION_HORIZONTAL);
+                scale->set_range(0.0, 1.0);
+                scale->set_digits(2);
+
+                box->pack_start(*lbl, Gtk::PACK_SHRINK);
+                box->pack_start(*scale, Gtk::PACK_SHRINK);
+
+                return std::make_pair(box, scale);
+            };
+
+            auto [r_box, r_scale] = mk_slider("Red");
+            auto [g_box, g_scale] = mk_slider("Green");
+            auto [b_box, b_scale] = mk_slider("Blue");
 
             r_scale->set_value(r);
             g_scale->set_value(g);
             b_scale->set_value(b);
 
-            r_scale->signal_value_changed().connect([this, r_scale]()
-                                                    { r = r_scale->get_value(); });
-            g_scale->signal_value_changed().connect([this, g_scale]()
-                                                    { g = g_scale->get_value(); });
-            b_scale->signal_value_changed().connect([this, b_scale]()
-                                                    { b = b_scale->get_value(); });
+            auto update_preview = [this, preview]()
+            {
+                preview->queue_draw();
+            };
 
-            box->pack_start(*r_scale);
-            box->pack_start(*g_scale);
-            box->pack_start(*b_scale);
+            r_scale->signal_value_changed().connect([this, r_scale, update_preview]()
+                                                    {
+        r = r_scale->get_value();
+        update_preview(); });
+
+            g_scale->signal_value_changed().connect([this, g_scale, update_preview]()
+                                                    {
+        g = g_scale->get_value();
+        update_preview(); });
+
+            b_scale->signal_value_changed().connect([this, b_scale, update_preview]()
+                                                    {
+        b = b_scale->get_value();
+        update_preview(); });
+
+            auto preset_box = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_HORIZONTAL, 6);
+
+            auto add_preset = [&](const char *name, double rr, double gg, double bb)
+            {
+                auto btn = Gtk::make_managed<Gtk::Button>(name);
+                btn->signal_clicked().connect([=, this]()
+                                              {
+            r = rr; g = gg; b = bb;
+            r_scale->set_value(r);
+            g_scale->set_value(g);
+            b_scale->set_value(b);
+            preview->queue_draw(); });
+                preset_box->pack_start(*btn);
+            };
+
+            add_preset("Ink", 0.1, 0.1, 0.15);
+            add_preset("Red", 0.8, 0.1, 0.1);
+            add_preset("Marker", 0.2, 0.8, 0.3);
+            add_preset("Neon", 0.2, 0.6, 1.0);
+
+            auto apply_btn = Gtk::make_managed<Gtk::Button>("Apply");
+            apply_btn->signal_clicked().connect([dialog]()
+                                                { dialog->close(); });
+            box->pack_start(*preview, Gtk::PACK_SHRINK);
+            box->pack_start(*r_box, Gtk::PACK_SHRINK);
+            box->pack_start(*g_box, Gtk::PACK_SHRINK);
+            box->pack_start(*b_box, Gtk::PACK_SHRINK);
+            box->pack_start(*preset_box, Gtk::PACK_SHRINK);
+            box->pack_start(*apply_btn, Gtk::PACK_SHRINK);
 
             dialog->show_all();
+
+            dialog->signal_hide().connect([dialog]()
+                                          { delete dialog; });
         }
 
         return true;
