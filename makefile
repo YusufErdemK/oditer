@@ -8,14 +8,14 @@ all: compile
 compile: main.cpp
 	@echo "${BLUE}started to compiling${NC}"
 	@mkdir -p build
-	@echo "${GREEN}created `build` folder${NC}"
-	@g++ main.cpp -o build/oditer `pkg-config --cflags --libs gtkmm-3.0`
+	@echo "${GREEN}created build folder${NC}"
+	@g++ main.cpp -o build/oditer `pkg-config --cflags --libs gtkmm-3.0 poppler-glib` -lcurl
 	@echo "${GREEN}compilation successful${NC}"
 
 clean:
 	@echo "${RED}cleaning up${NC}"
 	@rm -rf build
-	@echo "${RED}`build` folder cleaned up${NC}"
+	@echo "${RED}build folder cleaned up${NC}"
 
 run: compile
 	@./build/oditer
