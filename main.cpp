@@ -282,6 +282,43 @@ protected:
 
         cr->restore();
 
+        if (show_new_pen_dialog)
+        {
+            show_new_pen_dialog = false;
+
+            auto dialog = new Gtk::Window();
+            dialog->set_title("Create Pen");
+            dialog->set_default_size(270, 300);
+
+            auto box = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_VERTICAL, 12);
+            dialog->add(*box);
+
+            auto r_scale = Gtk::make_managed<Gtk::Scale>(Gtk::ORIENTATION_HORIZONTAL);
+            auto g_scale = Gtk::make_managed<Gtk::Scale>(Gtk::ORIENTATION_HORIZONTAL);
+            auto b_scale = Gtk::make_managed<Gtk::Scale>(Gtk::ORIENTATION_HORIZONTAL);
+
+            r_scale->set_range(0, 1);
+            g_scale->set_range(0, 1);
+            b_scale->set_range(0, 1);
+
+            r_scale->set_value(r);
+            g_scale->set_value(g);
+            b_scale->set_value(b);
+
+            r_scale->signal_value_changed().connect([this, r_scale]()
+                                                    { r = r_scale->get_value(); });
+            g_scale->signal_value_changed().connect([this, g_scale]()
+                                                    { g = g_scale->get_value(); });
+            b_scale->signal_value_changed().connect([this, b_scale]()
+                                                    { b = b_scale->get_value(); });
+
+            box->pack_start(*r_scale);
+            box->pack_start(*g_scale);
+            box->pack_start(*b_scale);
+
+            dialog->show_all();
+        }
+
         return true;
     }
 };
